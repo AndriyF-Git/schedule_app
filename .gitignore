@@ -1,0 +1,16 @@
+# Середовище
+.env
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# База даних
+*.db
+instance/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <h2>➕ Керування Розкладом: Додати Нове Заняття</h2>
+    <p>Використовуйте цю форму, щоб додати деталі нового заняття до загального розкладу.</p>
+    <hr>
+
+    <div class="form-container">
+        <h3>Деталі Нового Заняття</h3>
+
+        <form method="POST" action="{{ url_for('add_schedule_entry') }}">
+            
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="day">День Тижня:</label>
+                    <select id="day" name="day" required>
+                        <option value="">-- Оберіть День --</option>
+                        <option value="Понеділок">Понеділок</option>
+                        <option value="Вівторок">Вівторок</option>
+                        <option value="Середа">Середа</option>
+                        <option value="Четвер">Четвер</option>
+                        <option value="П’ятниця">П’ятниця</option>
+                        <option value="Субота">Субота</option>
+                    </select>
+                </div>
+                
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="time">Час Заняття (напр., 9:00 - 10:30):</label>
+                    <input type="text" id="time" name="time" placeholder="Наприклад: 9:00 - 10:30" required>
+                </div>
+                
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="group_name">Назва Групи:</label>
+                    <input type="text" id="group_name" name="group_name" placeholder="Наприклад: КН-301" required>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 15px;">
+                
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="subject_id">📚 Дисципліна:</label>
+                    <select id="subject_id" name="subject_id" required>
+                        <option value="">-- Оберіть Дисципліну --</option>
+                        {% for subject in subjects %}
+                            <option value="{{ subject.id }}">{{ subject.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="teacher_id">👨‍🏫 Викладач:</label>
+                    <select id="teacher_id" name="teacher_id" required>
+                        <option value="">-- Оберіть Викладача --</option>
+                        {% for teacher in teachers %}
+                            <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="classroom">🚪 Аудиторія:</label>
+                    <input type="text" id="classroom" name="classroom" placeholder="Наприклад: 101 або Online" required>
+                </div>
+            </div>
+            
+            <button type="submit" style="margin-top: 25px;">➕ Зберегти Заняття</button>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn" style="background-color: #6c757d;">Скасувати та Назад</a>
+        </form>
+    </div>
+
+{% endblock %}

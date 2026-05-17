@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <h2>⚙️ Керування Ресурсами та Навантаженням</h2>
+    <p>Введіть усі необхідні ресурси та визначте навантаження для автоматичної генерації розкладу.</p>
+    <hr>
+
+    <div style="display: flex; gap: 30px; flex-wrap: wrap;">
+
+        <div class="admin-section" style="flex: 1; min-width: 300px;">
+            <h3>👥 Студентські Групи</h3>
+            
+            <h4>Додати Нову Групу</h4>
+            <form method="POST" action="{{ url_for('add_group') }}">
+                <label for="group_name">Назва Групи:</label>
+                <input type="text" id="group_name" name="name" placeholder="Наприклад: КН-301" required>
+                <button type="submit">Додати Групу</button>
+            </form>
+            
+            <h4 style="margin-top: 20px;">Наявні Групи:</h4>
+            <ul>
+                {% for group in groups %}
+                    <li>{{ group.name }}</li>
+                {% else %}
+                    <li>Групи відсутні.</li>
+                {% endfor %}
+            </ul>
+        </div>
+        
+        <div class="admin-section" style="flex: 1; min-width: 300px;">
+            <h3>🚪 Аудиторії</h3>
+            
+            <h4>Додати Нову Аудиторію</h4>
+            <form method="POST" action="{{ url_for('add_classroom') }}">
+                <label for="classroom_name">Назва Аудиторії:</label>
+                <input type="text" id="classroom_name" name="name" placeholder="Наприклад: 205 або Online" required>
+                <label for="capacity">Місткість (опціонально):</label>
+                <input type="number" id="capacity" name="capacity" value="30">
+                <button type="submit">Додати Аудиторію</button>
+            </form>
+            
+            <h4 style="margin-top: 20px;">Наявні Аудиторії:</h4>
+            <ul>
+                {% for classroom in classrooms %}
+                    <li>{{ classroom.name }} (Місткість: {{ classroom.capacity if classroom.capacity else 'Н/Д' }})</li>
+                {% else %}
+                    <li>Аудиторії відсутні.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <hr>
+    
+    <div class="admin-section">
+        <h3>🎯 Визначення Навантаження (Що треба запланувати?)</h3>
+        <p>Вкажіть, скільки пар на тиждень потрібна кожній групі з конкретного предмета і з яким викладачем.</p>
+        
+        <form method="POST" action="{{ url_for('add_course_load') }}">
+            
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                
+                <div style="flex: 1; min-width: 250px;">
+                    <label for="group_id">Група:</label>
+                    <select id="group_id" name="group_id" required>
+                        <option value="">-- Оберіть Групу --</option>
+                        {% for group in groups %}
+                            <option value="{{ group.id }}">{{ group.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div style="flex: 1; min-width: 250px;">
+                    <label for="subject_id">Дисципліна:</label>
+                    <select id="subject_id" name="subject_id" required>
+                        <option value="">-- Оберіть Дисципліну --</option>
+                        {% for subject in subjects %}
+                            <option value="{{ subject.id }}">{{ subject.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div style="flex: 1; min-width: 250px;">
+                    <label for="teacher_id">Викладач:</label>
+                    <select id="teacher_id" name="teacher_id" required>
+                        <option value="">-- Оберіть Викладача --</option>
+                        {% for teacher in teachers %}
+                            <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div style="flex: 1; min-width: 150px;">
+                    <label for="required_sessions">Кількість Пар (на тиждень):</label>
+                    <input type="number" id="required_sessions" name="required_sessions" min="1" required>
+                </div>
+            </div>
+            
+            <button type="submit" style="margin-top: 15px;">Задати Навантаження</button>
+        </form>
+    </div>
+
+    <hr>
+    
+    <div class="admin-section">
+        <h3>Поточні Вимоги до Розкладу (Навантаження)</h3>
+        {% if course_loads %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Група</th>
+                        <th>Дисципліна</th>
+                        <th>Викладач</th>
+                        <th>Пар на Тиждень</th>
+                        <th>Дія</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for load in course_loads %}
+                        <tr>
+                            <td>{{ load.group.name }}</td>
+                            <td>{{ load.subject.name }}</td>
+                            <td>{{ load.teacher.name }}</td>
+                            <td>{{ load.required_sessions }}</td>
+                            <td>
+                                [Видалити] 
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>Навантаження не визначено. Додайте вимоги вище, щоб система знала, що планувати.</p>
+        {% endif %}
+    </div>
+    
+{% endblock %}

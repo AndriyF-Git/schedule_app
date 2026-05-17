@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+
+{% block title %}Розклад Занять{% endblock %}
+
+{% block content %}
+    <h2 style="margin-bottom: 20px;">
+        📚 Розклад Занять 
+        
+        {% if selected_group_name and selected_group_name != 'all' %}
+            (Група: {{ selected_group_name }})
+        {% elif selected_subject_name and selected_subject_name != 'all' %}
+            (Дисципліна: {{ selected_subject_name }})
+        {% elif selected_teacher_name and selected_teacher_name != 'all' %}
+            (Викладач: {{ selected_teacher_name }})
+        {% else %}
+            (Загальний)
+        {% endif %}
+    </h2>
+
+    <div style="display: flex; gap: 20px; margin-bottom: 25px; align-items: center;" class="no-print">
+
+        <div class="filter-controls">
+            <form method="GET" action="{{ url_for('view_schedule') }}" style="display: flex; align-items: center; gap: 10px;">
+                <label for="group-select">Фільтр за **групою**:</label>
+                <select name="group" id="group-select">
+                    <option value="all" {% if not selected_group_name or selected_group_name == 'all' %}selected{% endif %}>
+                        — Показати всі групи —
+                    </option>
+                    {% for group in all_groups %}
+                        <option value="{{ group.name }}" 
+                                {% if selected_group_name == group.name %}selected{% endif %}>
+                            {{ group.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <input type="hidden" name="subject" value="{{ selected_subject_name if selected_subject_name else 'all' }}">
+                <input type="hidden" name="teacher" value="{{ selected_teacher_name if selected_teacher_name else 'all' }}">
+                <button type="submit">Фільтрувати</button>
+            </form>
+        </div>
+
+        <div class="filter-controls">
+            <form method="GET" action="{{ url_for('view_schedule') }}" style="display: flex; align-items: center; gap: 10px;">
+                <label for="subject-select">Фільтр за **дисципліною**:</label>
+                <select name="subject" id="subject-select">
+                    <option value="all" {% if not selected_subject_name or selected_subject_name == 'all' %}selected{% endif %}>
+                        — Показати всі дисципліни —
+                    </option>
+                    {% for subject in all_subjects %}
+                        <option value="{{ subject.name }}" 
+                                {% if selected_subject_name == subject.name %}selected{% endif %}>
+                            {{ subject.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <input type="hidden" name="group" value="{{ selected_group_name if selected_group_name else 'all' }}">
+                <input type="hidden" name="teacher" value="{{ selected_teacher_name if selected_teacher_name else 'all' }}">
+                <button type="submit">Фільтрувати</button>
+            </form>
+        </div>
+        
+        <div class="filter-controls">
+            <form method="GET" action="{{ url_for('view_schedule') }}" style="display: flex; align-items: center; gap: 10px;">
+                <label for="teacher-select">Фільтр за **викладачем**:</label>
+                <select name="teacher" id="teacher-select">
+                    <option value="all" {% if not selected_teacher_name or selected_teacher_name == 'all' %}selected{% endif %}>
+                        — Показати всіх викладачів —
+                    </option>
+                    {% for teacher in all_teachers %}
+                        <option value="{{ teacher.name }}" 
+                                {% if selected_teacher_name == teacher.name %}selected{% endif %}>
+                            {{ teacher.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <input type="hidden" name="group" value="{{ selected_group_name if selected_group_name else 'all' }}">
+                <input type="hidden" name="subject" value="{{ selected_subject_name if selected_subject_name else 'all' }}">
+                <button type="submit">Фільтрувати</button>
+            </form>
+        </div>
+
+        <button onclick="window.print()" class="btn print-btn" style="background-color: #3f72af; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer;">
+            🖨️ Друк / Експорт у PDF
+        </button>
+        
+    </div>
+
+    <div class="schedule-container">
+    {% for day in ordered_days %}
+        <h3>{{ day }}</h3>
+        
+        {% if day in schedule_by_day %}
+        <table class="schedule-table">
+            <thead>
+                <tr>
+                    <th>Час</th>
+                    <th>Група</th>
+                    <th>Дисципліна</th>
+                    <th>Викладач</th>
+                    <th>Аудиторія</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in schedule_by_day[day] %}
+                <tr>
+                    <td>{{ entry.time }}</td>
+                    <td>{{ entry.group_name }}</td>
+                    <td>{{ entry.subject.name }}</td>
+                    <td>{{ entry.teacher.name }}</td>
+                    <td>{{ entry.classroom }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+            <p>На цей день занять немає (за обраними критеріями).</p>
+        {% endif %}
+        
+    {% endfor %}
+    </div>
+
+{% endblock %}

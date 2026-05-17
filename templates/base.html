@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Система Розкладу Занять{% endblock %}</title>
+    
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}"> 
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+</head>
+<body>
+    <header>
+        <h1>🎓 Система Розкладу Занять</h1>
+        <nav>
+            <a href="{{ url_for('view_schedule') }}">Перегляд Розкладу</a> 
+            <span>|</span>
+            
+            {% if session.get('is_admin_logged_in') %}
+                <a href="{{ url_for('admin_dashboard') }}">Адмін Панель</a>
+                <span>|</span>
+                <a href="{{ url_for('admin_logout') }}">Вихід</a>
+            {% else %}
+                <a href="{{ url_for('admin_login') }}">Вхід для Адміністратора</a>
+            {% endif %}
+        </nav>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flashes">
+        {% for category, message in messages %}
+          <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
