@@ -11,8 +11,9 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      APP_SECRET_KEY: ${{ secrets.SECRET_KEY }}
       ADMIN_PIN: ${{ secrets.ADMIN_PIN }}
+      DATABASE_URL: sqlite:///test.db
 
     steps:
       - name: Checkout code
