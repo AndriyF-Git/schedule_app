@@ -1,5 +1,7 @@
 from dotenv import load_dotenv
 import os
+import logging
+from pythonjsonlogger import jsonlogger
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
@@ -13,7 +15,26 @@ app.config['SECRET_KEY'] = os.getenv('APP_SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///schedule.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
-ADMIN_PIN = os.getenv('ADMIN_PIN')  # Код підтвердження для адміністратора
+ADMIN_PIN = os.getenv('ADMIN_PIN')
+
+# --- Налаштування JSON логування ---
+os.makedirs('logs', exist_ok=True)
+logger = logging.getLogger('schedule_app')
+logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler('logs/app.log')
+file_handler.setFormatter(jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s'))
+logger.addHandler(file_handler)
+
+@app.after_request
+def log_request(response):
+    logger.info('request', extra={
+        'method': request.method,
+        'path': request.path,
+        'status': response.status_code,
+        'ip': request.remote_addr,
+    })
+    return response
 
 
 

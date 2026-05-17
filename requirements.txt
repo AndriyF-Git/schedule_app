@@ -3,3 +3,4 @@ Flask-SQLAlchemy
 SQLAlchemy
 python-dotenv
 pytest
+python-json-logger
