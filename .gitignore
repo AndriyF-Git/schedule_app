@@ -10,6 +10,7 @@ __pycache__/
 # База даних
 *.db
 instance/
+migrations/
 
 # Логи
 logs/*.log

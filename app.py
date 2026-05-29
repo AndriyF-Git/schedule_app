@@ -4,6 +4,7 @@ import logging
 from pythonjsonlogger import jsonlogger
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from sqlalchemy.exc import IntegrityError
 from random import shuffle
 from functools import wraps
@@ -11,10 +12,11 @@ from functools import wraps
 load_dotenv()
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv('APP_SECRET_KEY')
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///schedule.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 ADMIN_PIN = os.getenv('ADMIN_PIN')
 
 # --- Налаштування JSON логування ---
