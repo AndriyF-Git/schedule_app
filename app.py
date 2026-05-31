@@ -9,6 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from random import shuffle
 from functools import wraps
 from ai.scoring import score_schedule
+from ai.recommender import recommend_slots_ml
+from ai.or_tools_generator import generate_schedule_or_tools
 
 load_dotenv()
 
@@ -269,14 +271,16 @@ def admin_logout():
 @admin_required
 def admin_dashboard():
     """Адміністративна головна сторінка."""
+    import os
     subjects = Subject.query.all()
     teachers = Teacher.query.all()
     schedule_entries = Schedule.query.order_by(Schedule.day, Schedule.time).all()
-    
-    return render_template('admin/admin_dashboard.html', 
-                           subjects=subjects, 
+
+    return render_template('admin/admin_dashboard.html',
+                           subjects=subjects,
                            teachers=teachers,
-                           schedule_entries=schedule_entries)
+                           schedule_entries=schedule_entries,
+                           rf_model_exists=os.path.exists('ai/models/recommender.pkl'))
 
 
 @app.route('/admin/resources')
@@ -374,6 +378,254 @@ def add_course_load():
     return redirect(url_for('manage_resources'))
 
 # --- Маршрути Розкладу (Захищені) ---
+
+@app.route('/admin/ai_generate', methods=['GET', 'POST'])
+@admin_required
+def ai_generate():
+    """AI-генерація розкладу через OR-Tools CP-SAT (Mode 3)."""
+    # Показуємо поточну оцінку до генерації
+    current_score = None
+    current_entries_count = Schedule.query.count()
+    if current_entries_count > 0:
+        subjects_map = {s.id: s.difficulty for s in Subject.query.all()}
+        current_score = score_schedule(
+            Schedule.query.all(),
+            course_loads=CourseLoad.query.all(),
+            subjects=subjects_map,
+        )['adjusted_score']
+
+    if request.method == 'POST':
+        timeout = request.form.get('timeout', 15, type=int)
+        timeout = max(5, min(timeout, 120))
+
+        # Eager-load group/subject/teacher щоб уникнути lazy-load всередині генератора
+        from sqlalchemy.orm import joinedload
+        raw_loads    = CourseLoad.query.options(
+            joinedload(CourseLoad.group),
+            joinedload(CourseLoad.subject),
+            joinedload(CourseLoad.teacher),
+        ).all()
+        classrooms   = Classroom.query.all()
+        subjects_map = {s.id: s.difficulty for s in Subject.query.all()}
+
+        if not raw_loads:
+            flash('Немає навантаження для генерації. Спочатку додайте курсові навантаження.', 'error')
+            return redirect(url_for('ai_generate'))
+
+        # Передаємо plain dicts — генератор не потребує SQLAlchemy-сесії
+        course_load_dicts = [
+            {
+                'group_name':       cl.group.name,
+                'teacher_id':       cl.teacher_id,
+                'subject_id':       cl.subject_id,
+                'required_sessions': cl.required_sessions,
+            }
+            for cl in raw_loads
+        ]
+        classroom_dicts = [
+            {'id': r.id, 'name': r.name, 'capacity': r.capacity}
+            for r in classrooms
+        ]
+
+        entries, status_msg, _ = generate_schedule_or_tools(
+            course_load_dicts, classroom_dicts, subjects_map, timeout=timeout,
+        )
+
+        if not entries:
+            flash(f'AI генерація не дала результату: {status_msg}', 'error')
+            return redirect(url_for('ai_generate'))
+
+        # Оцінюємо AI-розклад (dicts — score_schedule їх підтримує)
+        ai_result = score_schedule(
+            entries,
+            course_loads=course_load_dicts,
+            subjects=subjects_map,
+        )
+        ai_score = ai_result['adjusted_score']
+        hard_viol = sum(
+            v['violations'] for k, v in ai_result['breakdown'].items()
+            if k.startswith('H') and 'violations' in v
+        )
+
+        # Зберігаємо AI-розклад у БД
+        Schedule.query.delete()
+        db.session.add_all([
+            Schedule(
+                day=e['day'], time=e['time'], classroom=e['classroom'],
+                group_name=e['group_name'], subject_id=e['subject_id'],
+                teacher_id=e['teacher_id'],
+            )
+            for e in entries
+        ])
+        db.session.commit()
+
+        # Flash: результат AI + порівняння з попереднім
+        comparison = ''
+        if current_score is not None:
+            diff = round(ai_score - current_score, 1)
+            sign = '+' if diff >= 0 else ''
+            comparison = f' (попередній: {current_score}/100, зміна {sign}{diff})'
+
+        hard_msg = ' | Жорстких порушень немає' if not hard_viol else f' | Жорстких порушень: {hard_viol}'
+        flash(
+            f'🤖 OR-Tools: {status_msg}. '
+            f'Оцінка: {ai_score}/100{hard_msg}{comparison}',
+            'success',
+        )
+        return redirect(url_for('view_schedule'))
+
+    return render_template(
+        'admin/ai_generate.html',
+        current_score=current_score,
+        current_entries_count=current_entries_count,
+    )
+
+
+@app.route('/admin/schedule/place', methods=['GET', 'POST'])
+@admin_required
+def place_schedule():
+    """Ручне розміщення пари з AI-рекомендаціями слотів (Mode 2)."""
+    from collections import defaultdict
+
+    course_loads = CourseLoad.query.all()
+    classrooms = Classroom.query.all()
+
+    selected_load = None
+    selected_classroom = ''
+    grid = None
+    recommendations = []
+
+    if request.method == 'POST':
+        load_id = request.form.get('course_load_id', type=int)
+        selected_classroom = request.form.get('classroom_name', '')
+
+        if load_id:
+            selected_load = CourseLoad.query.get_or_404(load_id)
+
+            all_entries = Schedule.query.all()
+            current_entries = [
+                {'day': e.day, 'time': e.time, 'group_name': e.group_name,
+                 'teacher_id': e.teacher_id, 'subject_id': e.subject_id,
+                 'classroom': e.classroom}
+                for e in all_entries
+            ]
+
+            subjects_map = {s.id: s.difficulty for s in Subject.query.all()}
+
+            recommendations = recommend_slots_ml(
+                group_name=selected_load.group.name,
+                subject_id=selected_load.subject_id,
+                teacher_id=selected_load.teacher_id,
+                current_entries=current_entries,
+                course_loads=CourseLoad.query.all(),
+                subjects=subjects_map,
+                classroom=selected_classroom or None,
+                top_n=5,
+            )
+
+            by_slot = defaultdict(list)
+            for e in all_entries:
+                by_slot[(e.day, e.time)].append(e)
+
+            rec_map = {(r['day'], r['time']): (i + 1, r) for i, r in enumerate(recommendations)}
+
+            grid = {}
+            for day in DAYS:
+                grid[day] = {}
+                for time in TIMES:
+                    occupants = by_slot.get((day, time), [])
+                    conflict = any(
+                        e.group_name == selected_load.group.name or
+                        e.teacher_id == selected_load.teacher_id
+                        for e in occupants
+                    )
+                    if selected_classroom:
+                        conflict = conflict or any(e.classroom == selected_classroom for e in occupants)
+
+                    ai_rank, rec = rec_map.get((day, time), (None, None))
+                    grid[day][time] = {
+                        'conflict': conflict,
+                        'ai_rank': ai_rank,
+                        'score': rec['score'] if rec else None,
+                        'delta': rec['delta'] if rec else None,
+                        'occupants': [
+                            {'group': e.group_name, 'subject': e.subject.name, 'teacher': e.teacher.name}
+                            for e in occupants
+                        ],
+                    }
+
+    using_ml = recommendations and recommendations[0].get('mode') == 'ml'
+    return render_template('admin/place_schedule.html',
+                           course_loads=course_loads,
+                           classrooms=classrooms,
+                           selected_load=selected_load,
+                           selected_classroom=selected_classroom,
+                           grid=grid,
+                           DAYS=DAYS,
+                           TIMES=TIMES,
+                           recommendations=recommendations,
+                           using_ml=using_ml)
+
+
+@app.route('/admin/train_rf', methods=['POST'])
+@admin_required
+def train_rf():
+    """Витягти фічі та натренувати Random Forest модель."""
+    import time
+    from ai.extract_features import run as extract_features
+    from ai.train_rf import train
+
+    t0 = time.time()
+    try:
+        rows = extract_features('data/schedules.jsonl', 'data/features.csv')
+        metrics = train('data/features.csv', 'ai/models/recommender.pkl')
+    except FileNotFoundError as e:
+        flash(str(e), 'error')
+        return redirect(url_for('admin_dashboard'))
+
+    elapsed = round(time.time() - t0, 1)
+    flash(
+        f'🎓 RF модель навчена за {elapsed}с '
+        f'| {rows:,} рядків | '
+        f'Accuracy: {metrics["accuracy"]} | F1: {metrics["f1"]} '
+        f'| Топ ознака: {metrics["top_feature"]}',
+        'success',
+    )
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/schedule/add', methods=['POST'])
+@admin_required
+def add_schedule_entry():
+    """Зберігає одну пару, додану вручну через place_schedule."""
+    try:
+        entry = Schedule(
+            day=request.form['day'],
+            time=request.form['time'],
+            classroom=request.form['classroom'],
+            group_name=request.form['group_name'],
+            subject_id=int(request.form['subject_id']),
+            teacher_id=int(request.form['teacher_id']),
+        )
+        db.session.add(entry)
+        db.session.commit()
+
+        subjects_map = {s.id: s.difficulty for s in Subject.query.all()}
+        result = score_schedule(
+            Schedule.query.all(),
+            course_loads=CourseLoad.query.all(),
+            subjects=subjects_map,
+        )
+        flash(
+            f'Заняття "{entry.group_name}, {entry.day} {entry.time}" додано. '
+            f'Оцінка розкладу: {result["adjusted_score"]}/100',
+            'success',
+        )
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Помилка при додаванні заняття: {e}', 'error')
+    return redirect(url_for('admin_dashboard'))
+
 
 @app.route('/admin/schedule/delete/<int:entry_id>', methods=['POST'])
 @admin_required

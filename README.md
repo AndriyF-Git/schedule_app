@@ -1,151 +1,137 @@
-# Schedule App
+# SceduleApp — Система розкладу занять
 
-Веб-застосунок для автоматичної генерації та перегляду розкладу занять. Побудований на Flask із SQLite базою даних.
-
-## Можливості
-
-- Автоматична генерація розкладу за жадібним алгоритмом
-- Фільтрація розкладу за групою, дисципліною або викладачем
-- Адміністративна панель для керування ресурсами (групи, викладачі, аудиторії, дисципліни, навантаження)
-- JSON-логування всіх HTTP-запитів
+Веб-застосунок для управління університетським розкладом. Адміністратори керують ресурсами та генерують розклад; студенти переглядають його з фільтрами.
 
 ## Стек
 
-- **Backend:** Python 3.11, Flask, Flask-SQLAlchemy
-- **База даних:** SQLite
-- **Логування:** python-json-logger → ELK stack
-- **CI/CD:** GitHub Actions
+| Шар | Технологія |
+|---|---|
+| Backend | Python 3.11 + Flask |
+| ORM | Flask-SQLAlchemy + Flask-Migrate |
+| База даних | SQLite |
+| Frontend | Jinja2 + Vanilla JS + CSS |
+| AI | OR-Tools CP-SAT + scikit-learn Random Forest |
+| Логування | python-json-logger → ELK (Docker) |
+| Тести | pytest |
+| CI/CD | GitHub Actions |
+| Контейнеризація | Docker + Docker Compose |
 
 ## Структура проєкту
 
 ```
-schedule_app/
-├── .github/workflows/ci.yml   # GitHub Actions
-├── logstash/pipeline/         # Конфіг Logstash
-├── logs/                      # JSON логи Flask (не в git)
-├── static/                    # CSS, JS, favicon
-├── templates/                 # HTML шаблони
-│   ├── admin/                 # Адмін панель
-│   └── student/               # Перегляд розкладу
-├── tests/                     # Автотести (pytest)
-├── app.py                     # Основний файл застосунку
-├── conftest.py                # Конфігурація pytest
-├── docker-compose.yml         # ELK стек + Flask
-├── Dockerfile                 # Docker образ Flask
-└── requirements.txt
+SceduleApp/
+├── README.md
+├── db/                          ← SQL-скрипти (довідник / міграції)
+│   ├── create_tables.sql
+│   └── insert_test_data.sql
+└── schedule_app/                ← Flask-застосунок
+    ├── app.py                   ← моделі, маршрути, бізнес-логіка
+    ├── requirements.txt
+    ├── conftest.py
+    ├── seed_data.py             ← заповнення test.db тестовими даними
+    ├── generate_dataset.py      ← генерація JSONL-датасету для ML
+    ├── Dockerfile
+    ├── docker-compose.yml       ← Flask + Elasticsearch + Logstash + Kibana
+    ├── .env.example
+    ├── ai/                      ← AI-модуль (детальніше: ai/README.md)
+    │   ├── scoring.py
+    │   ├── recommender.py
+    │   ├── or_tools_generator.py
+    │   ├── extract_features.py
+    │   ├── train_rf.py
+    │   └── models/              ← збережені .pkl файли моделей
+    ├── static/
+    │   ├── css/style.css
+    │   └── js/script.js
+    ├── templates/
+    │   ├── base.html
+    │   ├── admin/
+    │   └── student/
+    ├── tests/test_app.py
+    ├── data/                    ← ML-датасет (не в git)
+    │   ├── schedules.jsonl
+    │   └── features.csv
+    └── instance/
+        └── schedule.db          ← робоча БД (не в git)
 ```
 
-## Запуск локально
+## Моделі БД
 
-**1. Клонування та середовище:**
+| Модель | Призначення |
+|---|---|
+| `Subject` | Дисципліна (назва, складність 1-3) |
+| `Teacher` | Викладач |
+| `Group` | Студентська група |
+| `Classroom` | Аудиторія з місткістю |
+| `CourseLoad` | Зв'язок: яка група, який предмет, який викладач, скільки пар |
+| `Schedule` | Запис розкладу: день, час, аудиторія, група, предмет, викладач |
 
-```bash
-git clone https://github.com/<your-username>/schedule_app.git
+## Режими генерації розкладу
+
+| Режим | Опис | Маршрут |
+|---|---|---|
+| Жадібний | Випадкове перемішування слотів, перший вільний | `POST /admin/generate` |
+| Mode 2 — Ручне + AI | Адмін вибирає слот, AI підказує найкращі | `GET /admin/schedule/place` |
+| Mode 3 — OR-Tools | CP-SAT constraint programming, оптимізує за 5-60 с | `GET /admin/ai_generate` |
+
+## Швидкий старт
+
+### Локально (Windows)
+
+```powershell
 cd schedule_app
 python -m venv venv
-venv\Scripts\activate        # Windows
+venv\Scripts\activate
 pip install -r requirements.txt
-```
 
-**2. Змінні середовища:**
+# Налаштування середовища
+copy .env.example .env
+# Відредагуй .env: вкажи SECRET_KEY та ADMIN_PIN
 
-Скопіюй `.env.example` у `.env` і заповни значення:
-
-```bash
-cp .env.example .env
-```
-
-```
-APP_SECRET_KEY=your_secret_key_here
-ADMIN_PIN=your_pin_here
-DATABASE_URL=sqlite:///schedule.db
-```
-
-**3. Запуск:**
-
-```bash
+# Запуск
 python app.py
+# → http://localhost:5000
 ```
 
-Застосунок доступний на `http://localhost:5000`
+### Docker (з ELK)
 
----
+```powershell
+cd schedule_app
+docker-compose up --build
+# Flask: http://localhost:5000
+# Kibana: http://localhost:5601
+```
 
-## CI/CD
+## Адміністрування
 
-Налаштовано через **GitHub Actions** (`.github/workflows/ci.yml`).
+1. Перейти на `/admin` → ввести PIN (з `.env`)
+2. Додати предмети, викладачів, групи, аудиторії
+3. Налаштувати навантаження (CourseLoad)
+4. Обрати спосіб генерації:
+   - **Жадібний** — миттєво
+   - **AI Генерація (OR-Tools)** — оптимально, 5-60 с
+   - **Ручне розміщення** — вручну з AI-підказками
 
-### Що відбувається при кожному push або pull request у `main`:
+## Тести
 
-1. Розгортається Ubuntu середовище з Python 3.11
-2. Встановлюються залежності з `requirements.txt`
-3. Запускаються автотести через `pytest tests/ -v`
-
-### Змінні середовища для CI
-
-Задаються через **GitHub Secrets** (Settings → Secrets and variables → Actions):
-
-| Secret | Опис |
-|--------|------|
-| `SECRET_KEY` | Секретний ключ Flask (мапиться на `APP_SECRET_KEY`) |
-| `ADMIN_PIN` | PIN-код адміністратора |
-
-`DATABASE_URL` для тестів задається прямо у `ci.yml` як `sqlite:///test.db` — не потребує секрету.
-
-### Запуск тестів локально:
-
-```bash
+```powershell
+cd schedule_app
 pytest tests/ -v
 ```
 
----
+## Змінні середовища
 
-## ELK Stack (логування)
+| Змінна | Опис |
+|---|---|
+| `SECRET_KEY` | Flask session key |
+| `ADMIN_PIN` | PIN для входу адміністратора |
+| `DATABASE_URL` | URL бази даних (за замовчуванням SQLite) |
 
-Для моніторингу логів використовується стек **Elasticsearch + Logstash + Kibana**.
+## AI-модуль
 
-### Архітектура
+Детальна документація: [schedule_app/ai/README.md](schedule_app/ai/README.md)
 
-```
-Flask → logs/app.log → Logstash → Elasticsearch → Kibana
-```
-
-Flask пише кожен HTTP-запит у `logs/app.log` у форматі JSON:
-
-```json
-{"asctime": "2026-05-17 17:00:00,000", "levelname": "INFO", "message": "request", "method": "GET", "path": "/schedule", "status": 200, "ip": "127.0.0.1"}
-```
-
-### Запуск ELK стеку
-
-Потрібен встановлений [Docker Desktop](https://www.docker.com/products/docker-desktop/).
-
-```bash
-docker-compose up --build
-```
-
-| Сервіс | URL |
-|--------|-----|
-| Flask | http://localhost:5000 |
-| Kibana | http://localhost:5601 |
-| Elasticsearch | http://localhost:9200 |
-
-### Перший запуск Kibana
-
-1. Відкрий `http://localhost:5601`
-2. Перейди в **Stack Management → Data Views → Create data view**
-3. Index pattern: `schedule-app-logs-*`
-4. Timestamp field: `@timestamp`
-5. Збережи та перейди в **Discover** або **Dashboard**
-
-### Зупинка
-
-```bash
-docker-compose down
-```
-
-Щоб також видалити збережені дані Elasticsearch:
-
-```bash
-docker-compose down -v
-```
+Коротко:
+- **Оцінювання** — `scoring.py` рахує якість розкладу (0-100) за 4 HARD + 3 SOFT критеріями
+- **OR-Tools** — CP-SAT знаходить оптимальний розклад (Score ~92/100 vs ~27 у жадібного)
+- **Random Forest** — навчається на датасеті з 1000 запусків, підказує найкращі слоти в Mode 2

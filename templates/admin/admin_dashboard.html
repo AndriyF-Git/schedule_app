@@ -8,15 +8,39 @@
         <h3>⚙️ Керування Розкладом та Генерація</h3>
         <p>Керуйте ресурсами та автоматично генеруйте розклад на основі заданого навантаження.</p>
 
-        <div style="display: flex; gap: 20px; align-items: center; margin-top: 20px;">
-            
+        <div style="display: flex; gap: 15px; align-items: center; margin-top: 20px; flex-wrap: wrap;">
+
             <a href="{{ url_for('manage_resources') }}" class="btn" style="background-color: #007bff; padding: 10px 20px; font-weight: bold;">
                 👥 Керування Ресурсами та Навантаженням
             </a>
-            
+
+            <a href="{{ url_for('place_schedule') }}" class="btn" style="background-color: #28a745; padding: 10px 20px; font-weight: bold;">
+                📋 Ручне розміщення (AI Mode 2)
+            </a>
+
+            <a href="{{ url_for('ai_generate') }}" class="btn" style="background-color: #3f72af; padding: 10px 20px; font-weight: bold;">
+                🤖 AI Генерація (OR-Tools)
+            </a>
+
             <form method="POST" action="{{ url_for('generate_schedule') }}" style="display: inline;">
                 <button type="submit" class="btn" style="background-color: #ffc107; color: #333; padding: 10px 20px; font-weight: bold;">
-                    ⚠️ Згенерувати Розклад Автоматично
+                    ⚠️ Згенерувати Автоматично
+                </button>
+            </form>
+        </div>
+
+        <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+            <strong>🎓 ML модель для рекомендацій (Mode 2):</strong>
+            {% if rf_model_exists %}
+                <span style="color: #28a745; font-weight: bold;">✓ Навчена</span>
+                &nbsp;—&nbsp; Mode 2 використовує Random Forest
+            {% else %}
+                <span style="color: #dc3545; font-weight: bold;">✗ Відсутня</span>
+                &nbsp;—&nbsp; Mode 2 використовує look-ahead (резервний режим)
+            {% endif %}
+            <form method="POST" action="{{ url_for('train_rf') }}" style="display: inline; margin-left: 15px;">
+                <button type="submit" class="btn" style="background-color: #6f42c1; padding: 6px 14px; font-size: 0.9em;">
+                    🎓 {{ 'Перенавчити' if rf_model_exists else 'Навчити' }} RF модель
                 </button>
             </form>
         </div>

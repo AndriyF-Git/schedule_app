@@ -40,8 +40,8 @@ from app import app, db, Subject, CourseLoad, Schedule, run_schedule_generation
 from ai.scoring import score_schedule
 
 
-def _entry_to_dict(e):
-    return {
+def _entry_to_dict(e, subjects_map=None):
+    d = {
         'day': e.day,
         'time': e.time,
         'group_name': e.group_name,
@@ -49,6 +49,9 @@ def _entry_to_dict(e):
         'teacher_id': e.teacher_id,
         'classroom': e.classroom,
     }
+    if subjects_map is not None:
+        d['subject_difficulty'] = subjects_map.get(e.subject_id, 2)
+    return d
 
 
 def _ensure_seeded():
@@ -123,7 +126,7 @@ def main():
                     'assigned': assigned,
                     'unassigned': unassigned,
                     'breakdown': result['breakdown'],
-                    'entries': [_entry_to_dict(e) for e in entries],
+                    'entries': [_entry_to_dict(e, subjects_map) for e in entries],
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + '\n')
                 scores.append(result['adjusted_score'])

@@ -1,0 +1,205 @@
+{% extends 'base.html' %}
+{% block title %}Ручне розміщення — Система Розкладу{% endblock %}
+
+{% block content %}
+<h2>📋 Ручне розміщення пари (Mode 2)</h2>
+<p>Виберіть навантаження та аудиторію — AI підкаже найкращі слоти для розміщення.</p>
+<hr>
+
+{% set diff_labels = {1: '🟢 Легкий', 2: '🟡 Середній', 3: '🔴 Важкий'} %}
+
+<!-- Форма вибору навантаження -->
+<div class="form-container">
+    <form method="POST">
+        <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end;">
+
+            <div style="flex: 2; min-width: 280px;">
+                <label for="course_load_id"><strong>Навантаження</strong> (Група / Дисципліна / Викладач):</label>
+                <select id="course_load_id" name="course_load_id" required>
+                    <option value="">-- Виберіть навантаження --</option>
+                    {% for cl in course_loads %}
+                        <option value="{{ cl.id }}"
+                            {% if selected_load and selected_load.id == cl.id %}selected{% endif %}>
+                            {{ cl.group.name }} | {{ cl.subject.name }} | {{ cl.teacher.name }}
+                            ({{ cl.required_sessions }} пар)
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="flex: 1; min-width: 180px;">
+                <label for="classroom_name"><strong>Аудиторія:</strong></label>
+                <select id="classroom_name" name="classroom_name">
+                    <option value="">-- Не вказано --</option>
+                    {% for cr in classrooms %}
+                        <option value="{{ cr.name }}"
+                            {% if selected_classroom == cr.name %}selected{% endif %}>
+                            {{ cr.name }} ({{ cr.capacity }} міст)
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="padding-bottom: 15px;">
+                <button type="submit" style="background-color: #3f72af; padding: 11px 20px; font-weight: bold;">
+                    🤖 Показати рекомендації AI
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{% if selected_load and grid %}
+
+<!-- Що розміщуємо -->
+<div class="placement-info">
+    <div>
+        <strong>Група:</strong> {{ selected_load.group.name }}
+        &nbsp;|&nbsp;
+        <strong>Дисципліна:</strong> {{ selected_load.subject.name }}
+        ({{ diff_labels.get(selected_load.subject.difficulty, '?') }})
+        &nbsp;|&nbsp;
+        <strong>Викладач:</strong> {{ selected_load.teacher.name }}
+        {% if selected_classroom %}
+            &nbsp;|&nbsp;
+            <strong>Аудиторія:</strong> {{ selected_classroom }}
+        {% endif %}
+    </div>
+</div>
+
+<!-- Легенда -->
+<div class="slot-legend">
+    <span class="legend-chip legend-ai-best">🥇 AI #1 — найкращий слот</span>
+    <span class="legend-chip legend-ai">⭐ AI #2–5</span>
+    <span class="legend-chip legend-free">✓ Вільний слот</span>
+    <span class="legend-chip legend-conflict">✗ Конфлікт</span>
+</div>
+
+<!-- Сітка слотів -->
+<div style="overflow-x: auto; margin-top: 10px;">
+    <table class="slot-grid">
+        <thead>
+            <tr>
+                <th class="day-col">День</th>
+                {% for time in TIMES %}
+                    <th>{{ time }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for day in DAYS %}
+                <tr>
+                    <td class="day-label">{{ day }}</td>
+                    {% for time in TIMES %}
+                        {% set cell = grid[day][time] %}
+
+                        {% if cell.conflict %}
+                            <td class="slot-cell slot-conflict">
+                                <div class="slot-inner-conflict">
+                                    <span class="conflict-x">✗</span>
+                                    {% for occ in cell.occupants %}
+                                        {% if occ.group == selected_load.group.name or occ.teacher == selected_load.teacher.name %}
+                                            <small>{{ occ.group }}<br>{{ occ.teacher }}</small>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                            </td>
+
+                        {% else %}
+                            <td class="slot-cell {% if cell.ai_rank == 1 %}slot-ai-best{% elif cell.ai_rank %}slot-ai{% else %}slot-free{% endif %}">
+                                <form method="POST" action="{{ url_for('add_schedule_entry') }}">
+                                    <input type="hidden" name="day"        value="{{ day }}">
+                                    <input type="hidden" name="time"       value="{{ time }}">
+                                    <input type="hidden" name="group_name" value="{{ selected_load.group.name }}">
+                                    <input type="hidden" name="subject_id" value="{{ selected_load.subject_id }}">
+                                    <input type="hidden" name="teacher_id" value="{{ selected_load.teacher_id }}">
+                                    <input type="hidden" name="classroom"  value="{{ selected_classroom or 'Не вказано' }}">
+                                    <button type="submit" class="slot-btn">
+                                        {% if cell.ai_rank %}
+                                            <span class="ai-rank">#{{ cell.ai_rank }}</span>
+                                            <span class="ai-score">{{ cell.score }}</span>
+                                            {% if cell.delta is not none %}
+                                            <span class="ai-delta {% if cell.delta >= 0 %}delta-pos{% else %}delta-neg{% endif %}">
+                                                {% if cell.delta >= 0 %}+{% endif %}{{ cell.delta }}
+                                            </span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="free-plus">+</span>
+                                        {% endif %}
+                                    </button>
+                                </form>
+                                {% if cell.occupants %}
+                                    <div class="slot-others">
+                                        {% for occ in cell.occupants %}
+                                            <span>{{ occ.group }}</span>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </td>
+                        {% endif %}
+
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Таблиця рекомендацій AI -->
+{% if recommendations %}
+<div style="margin-top: 25px; max-width: 520px;">
+    <h4>
+        🤖 Топ рекомендацій AI:
+        {% if using_ml %}
+            <span style="font-size:0.78em; background:#6f42c1; color:#fff; padding:2px 8px; border-radius:10px; margin-left:8px;">
+                RF модель
+            </span>
+        {% else %}
+            <span style="font-size:0.78em; background:#6c757d; color:#fff; padding:2px 8px; border-radius:10px; margin-left:8px;">
+                Look-ahead
+            </span>
+        {% endif %}
+    </h4>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>День</th>
+                <th>Час</th>
+                <th>{{ 'P(якість)' if using_ml else 'Оцінка' }}</th>
+                <th>{{ '–' if using_ml else 'Зміна' }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rec in recommendations %}
+                <tr>
+                    <td><strong>{{ loop.index }}</strong></td>
+                    <td>{{ rec.day }}</td>
+                    <td>{{ rec.time }}</td>
+                    <td>{{ rec.score }}{% if using_ml %}%{% endif %}</td>
+                    <td>
+                        {% if rec.delta is not none %}
+                            <span class="{% if rec.delta >= 0 %}delta-pos{% else %}delta-neg{% endif %}">
+                                {% if rec.delta >= 0 %}+{% endif %}{{ rec.delta }}
+                            </span>
+                        {% else %}
+                            <span style="color:#aaa;">–</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% elif selected_load %}
+    <p class="info" style="margin-top: 20px;">Не вдалося побудувати сітку. Перевірте дані.</p>
+{% endif %}
+
+<div style="margin-top: 30px;">
+    <a href="{{ url_for('admin_dashboard') }}" class="btn" style="background-color: #6c757d;">
+        ← Назад до панелі
+    </a>
+</div>
+{% endblock %}

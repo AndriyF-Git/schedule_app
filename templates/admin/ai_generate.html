@@ -1,0 +1,145 @@
+{% extends 'base.html' %}
+{% block title %}AI Генерація — Система Розкладу{% endblock %}
+
+{% block content %}
+<h2>🤖 AI Генерація розкладу (OR-Tools)</h2>
+<hr>
+
+<!-- Порівняльна таблиця: Жадібний vs AI -->
+<div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 25px;">
+
+    <div class="method-card method-greedy">
+        <div class="method-icon">⚙️</div>
+        <h3>Жадібний алгоритм</h3>
+        <p>Перемішує слоти випадково та бере перший вільний. Швидко, але не оптимально.</p>
+        <ul class="method-props">
+            <li>⚡ Час: &lt; 1 секунди</li>
+            <li>🎲 Результат: різний кожного разу</li>
+            <li>📊 Якість: ~27/100 середнє</li>
+            <li>🔧 Без оптимізації</li>
+        </ul>
+        <form method="POST" action="{{ url_for('generate_schedule') }}">
+            <button type="submit" class="btn method-btn-greedy">
+                ⚙️ Згенерувати (жадібний)
+            </button>
+        </form>
+    </div>
+
+    <div class="method-card method-ai">
+        <div class="method-icon">🤖</div>
+        <h3>AI — OR-Tools CP-SAT</h3>
+        <p>Constraint Programming: шукає <strong>оптимальний</strong> розклад серед усіх можливих розстановок.</p>
+        <ul class="method-props">
+            <li>⏱️ Час: 5–60 секунд (задається)</li>
+            <li>✅ Результат: найкращий знайдений</li>
+            <li>📈 Якість: значно вища</li>
+            <li>🎯 Оптимізує H3 + S5 + S3</li>
+        </ul>
+
+        <form method="POST" id="ai-form">
+            <div style="margin-bottom: 15px;">
+                <label for="timeout" style="font-weight: bold;">
+                    Ліміт часу пошуку:
+                    <span id="timeout-label" style="color: #3f72af;">15 с</span>
+                </label>
+                <input type="range" id="timeout" name="timeout"
+                       min="5" max="60" value="15" step="5"
+                       style="width: 100%; margin-top: 6px;"
+                       oninput="document.getElementById('timeout-label').textContent = this.value + ' с'">
+                <div style="display: flex; justify-content: space-between; font-size: 0.78em; color: #888;">
+                    <span>5с (швидко)</span>
+                    <span>60с (точніше)</span>
+                </div>
+            </div>
+
+            <button type="submit" class="btn method-btn-ai" id="ai-btn">
+                🤖 Запустити AI генерацію
+            </button>
+        </form>
+    </div>
+
+</div>
+
+<!-- Поточний стан розкладу -->
+{% if current_entries_count > 0 %}
+<div class="current-schedule-info">
+    <strong>Поточний розклад:</strong>
+    {{ current_entries_count }} записів
+    {% if current_score is not none %}
+        &nbsp;|&nbsp; Оцінка: <strong>{{ current_score }}/100</strong>
+        &nbsp;
+        <span class="score-badge
+            {% if current_score >= 60 %}score-good
+            {% elif current_score >= 30 %}score-mid
+            {% else %}score-low{% endif %}">
+            {% if current_score >= 60 %}Добре
+            {% elif current_score >= 30 %}Задовільно
+            {% else %}Низька{% endif %}
+        </span>
+    {% endif %}
+</div>
+{% else %}
+<div class="current-schedule-info" style="border-color: #ffc107; background: #fffbeb;">
+    ⚠️ Розклад порожній — спочатку потрібно згенерувати один з варіантів.
+</div>
+{% endif %}
+
+<!-- Що оптимізує AI -->
+<div class="ai-info-box">
+    <h4 style="margin-top: 0;">Що оптимізує OR-Tools:</h4>
+    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+        <div>
+            <strong>HARD (завжди виконуються):</strong>
+            <ul>
+                <li>Жоден викладач не читає 2 пари одночасно</li>
+                <li>Жодна група не має 2 пари одночасно</li>
+                <li>Максимум 4 пари на день (група / викладач)</li>
+            </ul>
+        </div>
+        <div>
+            <strong>SOFT (оптимізуються):</strong>
+            <ul>
+                <li><strong>H3</strong> — уникати 1 пари на день для групи</li>
+                <li><strong>S5</strong> — важкі предмети на 2-3 пару</li>
+                <li><strong>S3</strong> — більше пар вт/ср, менше пн/пт</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Loading overlay -->
+<div id="loading-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+     z-index:1000; align-items:center; justify-content:center; flex-direction:column;">
+    <div style="background:#fff; border-radius:12px; padding:40px; text-align:center; max-width:340px;">
+        <div class="spinner"></div>
+        <h3 style="margin-top:20px;">🤖 OR-Tools працює...</h3>
+        <p id="loading-msg" style="color:#555;">Шукаємо оптимальний розклад</p>
+        <p id="loading-timer" style="font-size:1.5em; font-weight:bold; color:#3f72af;">0 с</p>
+    </div>
+</div>
+
+<div style="margin-top: 20px;">
+    <a href="{{ url_for('admin_dashboard') }}" class="btn" style="background:#6c757d;">
+        ← Назад до панелі
+    </a>
+</div>
+
+<script>
+document.getElementById('ai-form').addEventListener('submit', function() {
+    const timeout = parseInt(document.getElementById('timeout').value);
+    document.getElementById('loading-overlay').style.display = 'flex';
+
+    let elapsed = 0;
+    const timer = setInterval(() => {
+        elapsed++;
+        document.getElementById('loading-timer').textContent = elapsed + ' с';
+        if (elapsed >= timeout) {
+            document.getElementById('loading-msg').textContent =
+                'Завершуємо та зберігаємо результат...';
+            clearInterval(timer);
+        }
+    }, 1000);
+});
+</script>
+
+{% endblock %}
