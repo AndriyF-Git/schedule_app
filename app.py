@@ -8,6 +8,7 @@ from flask_migrate import Migrate
 from sqlalchemy.exc import IntegrityError
 from random import shuffle
 from functools import wraps
+from ai.scoring import score_schedule
 
 load_dotenv()
 
@@ -63,6 +64,7 @@ def admin_required(f):
 class Subject(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), unique=True, nullable=False)
+    difficulty = db.Column(db.Integer, default=2)  # 1=легкий, 2=середній, 3=важкий
     schedule = db.relationship('Schedule', backref='subject', lazy=True)
     load = db.relationship('CourseLoad', backref='subject', lazy=True)
 
@@ -397,9 +399,27 @@ def generate_schedule():
 
         if total_assigned > 0:
             flash(f'✅ Автоматична генерація завершена. Успішно заплановано {total_assigned} занять.', 'success')
+
+            subjects_map = {s.id: s.difficulty for s in Subject.query.all()}
+            result = score_schedule(
+                Schedule.query.all(),
+                course_loads=CourseLoad.query.all(),
+                subjects=subjects_map,
+            )
+            score = result['adjusted_score']
+            breakdown = result['breakdown']
+            hard_violations = sum(
+                v['violations'] for k, v in breakdown.items()
+                if k.startswith('H') and 'violations' in v
+            )
+            flash(
+                f'📊 Оцінка розкладу: {score}/100'
+                + (f' | Жорстких порушень: {hard_violations}' if hard_violations else ' | Жорстких порушень немає'),
+                'info'
+            )
         else:
-            flash(f'⚠️ Помилка генерації: Не вдалося запланувати жодного заняття. Перевірте, чи додані ресурси та навантаження.', 'error')
-        
+            flash('⚠️ Помилка генерації: Не вдалося запланувати жодного заняття. Перевірте, чи додані ресурси та навантаження.', 'error')
+
         if total_unassigned > 0:
             flash(f'❗ Увага: {total_unassigned} занять НЕ вдалося розмістити через конфлікти ресурсів (час, викладач, аудиторія).', 'warning')
 
