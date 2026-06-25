@@ -1,0 +1,71 @@
+@startuml SceduleApp_ER
+
+skinparam linetype ortho
+skinparam entity {
+    BackgroundColor #f5f0e3
+    BorderColor #1a3d2b
+    FontColor #1a3d2b
+}
+skinparam ArrowColor #1a3d2b
+
+entity "Subject" as subject {
+    * id : INTEGER <<PK>>
+    --
+    * name : VARCHAR(100) <<unique>>
+    * difficulty : INTEGER
+}
+
+entity "Teacher" as teacher {
+    * id : INTEGER <<PK>>
+    --
+    * name : VARCHAR(100)
+}
+
+entity "Group" as grp {
+    * id : INTEGER <<PK>>
+    --
+    * name : VARCHAR(50) <<unique>>
+}
+
+entity "Classroom" as classroom {
+    * id : INTEGER <<PK>>
+    --
+    * name : VARCHAR(50) <<unique>>
+    * capacity : INTEGER
+}
+
+entity "CourseLoad" as load {
+    * id : INTEGER <<PK>>
+    --
+    * group_id : INTEGER <<FK>>
+    * subject_id : INTEGER <<FK>>
+    * teacher_id : INTEGER <<FK>>
+    * required_sessions : INTEGER
+}
+
+entity "Schedule" as schedule {
+    * id : INTEGER <<PK>>
+    --
+    * day : VARCHAR(20)
+    * time : VARCHAR(20)
+    o classroom_id : INTEGER <<FK, nullable>>
+    * group_name : VARCHAR(50)
+    * subject_id : INTEGER <<FK>>
+    * teacher_id : INTEGER <<FK>>
+}
+
+grp ||--o{ load : "group_id"
+subject ||--o{ load : "subject_id"
+teacher ||--o{ load : "teacher_id"
+
+subject ||--o{ schedule : "subject_id"
+teacher ||--o{ schedule : "teacher_id"
+classroom |o--o{ schedule : "classroom_id"
+
+note bottom of schedule
+  group_name - denormalizovanyi ryadok,
+  ne FK do Group.
+  classroom_id - nullable FK do Classroom.
+end note
+
+@enduml

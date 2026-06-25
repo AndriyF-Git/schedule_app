@@ -44,7 +44,7 @@ def log_request(response):
 
 
 # Дні тижня та часові слоти для генерації
-DAYS = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П’ятниця']
+DAYS = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця"]
 TIMES = ['9:00 - 10:30', '10:45 - 12:15', '12:30 - 14:00', '14:15 - 15:45', '16:00 - 17:30']
 
 
@@ -97,11 +97,16 @@ class Schedule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     day = db.Column(db.String(20), nullable=False)
     time = db.Column(db.String(20), nullable=False)
-    classroom = db.Column(db.String(50), nullable=False) 
-    group_name = db.Column(db.String(50), nullable=False) 
+    classroom_id = db.Column(db.Integer, db.ForeignKey('classroom.id'), nullable=True)
+    classroom_rel = db.relationship('Classroom')
+    group_name = db.Column(db.String(50), nullable=False)
 
     subject_id = db.Column(db.Integer, db.ForeignKey('subject.id'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('teacher.id'), nullable=False)
+
+    @property
+    def classroom(self):
+        return self.classroom_rel.name if self.classroom_rel else 'Не вказано'
 
 # Створення таблиць при першому запуску
 with app.app_context():
@@ -152,8 +157,8 @@ def run_schedule_generation():
                     new_entry = Schedule(
                         day=slot['day'],
                         time=slot['time'],
-                        classroom=chosen_room.name, 
-                        group_name=load.group.name, 
+                        classroom_id=chosen_room.id,
+                        group_name=load.group.name,
                         subject_id=load.subject_id,
                         teacher_id=load.teacher_id
                     )
@@ -218,7 +223,7 @@ def view_schedule():
             selected_teacher_name = None
 
     # 5. Виконання запиту та сортування
-    all_schedule = query.order_by(Schedule.day, Schedule.time).all()
+    all_schedule = sorted(query.all(), key=lambda e: (DAYS.index(e.day) if e.day in DAYS else 99, TIMES.index(e.time) if e.time in TIMES else 99))
     
     # 6. Групування розкладу за днями
     schedule_by_day = {}
@@ -274,7 +279,7 @@ def admin_dashboard():
     import os
     subjects = Subject.query.all()
     teachers = Teacher.query.all()
-    schedule_entries = Schedule.query.order_by(Schedule.day, Schedule.time).all()
+    schedule_entries = sorted(Schedule.query.all(), key=lambda e: (DAYS.index(e.day) if e.day in DAYS else 99, TIMES.index(e.time) if e.time in TIMES else 99))
 
     return render_template('admin/admin_dashboard.html',
                            subjects=subjects,
@@ -448,10 +453,11 @@ def ai_generate():
         )
 
         # Зберігаємо AI-розклад у БД
+        room_name_to_id = {r.name: r.id for r in classrooms}
         Schedule.query.delete()
         db.session.add_all([
             Schedule(
-                day=e['day'], time=e['time'], classroom=e['classroom'],
+                day=e['day'], time=e['time'], classroom_id=room_name_to_id.get(e['classroom']),
                 group_name=e['group_name'], subject_id=e['subject_id'],
                 teacher_id=e['teacher_id'],
             )
@@ -599,10 +605,12 @@ def train_rf():
 def add_schedule_entry():
     """Зберігає одну пару, додану вручну через place_schedule."""
     try:
+        classroom_name = request.form.get('classroom', '')
+        classroom_obj = Classroom.query.filter_by(name=classroom_name).first() if classroom_name and classroom_name != 'Не вказано' else None
         entry = Schedule(
             day=request.form['day'],
             time=request.form['time'],
-            classroom=request.form['classroom'],
+            classroom_id=classroom_obj.id if classroom_obj else None,
             group_name=request.form['group_name'],
             subject_id=int(request.form['subject_id']),
             teacher_id=int(request.form['teacher_id']),
