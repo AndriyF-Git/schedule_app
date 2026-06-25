@@ -178,11 +178,12 @@ def test_add_course_load(seeded_client):
 # ---------------------------------------------------------------------------
 
 def test_delete_schedule_entry(seeded_client):
-    from app import Schedule, Subject, Teacher
+    from app import Schedule, Subject, Teacher, Classroom
     subj    = Subject.query.first()
     teacher = Teacher.query.first()
+    room    = Classroom.query.first()
     entry   = Schedule(
-        day='Понеділок', time='9:00 - 10:30', classroom='А-301',
+        day='Понеділок', time='9:00 - 10:30', classroom_id=room.id if room else None,
         group_name='ІПЗ-41', subject_id=subj.id, teacher_id=teacher.id,
     )
     db.session.add(entry)
